@@ -52,6 +52,7 @@ def request_registration(
     user_type: Optional[str] = None,
     _print: Callable[[str], None] = print,
     exit: Callable[[int], None] = sys.exit,
+    exists_ok: bool = False,
 ) -> None:
     url = "%s/_synapse/admin/v1/register" % (server_location.rstrip("/"),)
 
@@ -97,10 +98,14 @@ def request_registration(
     r = requests.post(url, json=data)
 
     if r.status_code != 200:
+        response = r.json()
+        if exists_ok and response["errcode"] == "M_USER_IN_USE":
+            _print("User already exists. Skipping.")
+            return
         _print("ERROR! Received %d %s" % (r.status_code, r.reason))
         if 400 <= r.status_code < 500:
             try:
-                _print(r.json()["error"])
+                _print(response["error"])
             except Exception:
                 pass
         return exit(1)
@@ -115,6 +120,7 @@ def register_new_user(
     shared_secret: str,
     admin: Optional[bool],
     user_type: Optional[str],
+    exists_ok: bool = False,
 ) -> None:
     if not user:
         try:
@@ -154,7 +160,7 @@ def register_new_user(
             admin = False
 
     request_registration(
-        user, password, server_location, shared_secret, bool(admin), user_type
+        user, password, server_location, shared_secret, bool(admin), user_type, exists_ok=exists_ok
     )
 
 
@@ -192,6 +198,12 @@ def main() -> None:
         "--user_type",
         default=None,
         help="User type as specified in synapse.api.constants.UserTypes",
+    )
+
+    parser.add_argument(
+        "--exists-ok",
+        action="store_true",
+        help="Do not fail if user already exists.",
     )
     admin_group = parser.add_mutually_exclusive_group()
     admin_group.add_argument(
@@ -283,7 +295,7 @@ def main() -> None:
         admin = args.admin
 
     register_new_user(
-        args.user, password, server_url, secret, admin, args.user_type
+        args.user, password, server_url, secret, admin, args.user_type, args.exists_ok
     )
 
 
